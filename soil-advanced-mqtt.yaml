@@ -1,0 +1,189 @@
+substitutions:
+  sleep_time: 900s
+  auto_wake_time: 30s
+  internal_mode: "false"
+  led_pin: GPIO2
+
+  soil_moisture_power_pin: GPIO33
+  soil_moisture_pin: GPIO32
+
+  soil_temperature_power_pin: GPIO27
+  soil_temperature_pin: GPIO14
+
+web_server:
+
+mqtt:
+  broker: homeassistant.local
+  username: XXXXXX
+  password: XXXXXX
+  discovery: true
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+esphome:
+  name: soil-moisture-sensor
+  friendly_name: Soil Moisture Sensor
+  on_boot:
+    - priority: 1000
+      then:
+        lambda: |-
+          pinMode(27, OUTPUT);
+          digitalWrite(27, HIGH);  // Power temperature sensor on
+    - priority: -100
+      then:
+        - logger.log: "....Starting sensor updates"
+        - repeat:
+            count: 10
+            then:
+              - component.update: soil_moisture_sensor
+              - component.update: soil_temperature_sensor
+              - delay: 100ms
+
+        - wait_until:
+            condition:
+              binary_sensor.is_on: all_updates_recieved
+            timeout: 30s
+        - script.execute: sleep_if_allowed
+
+  on_shutdown:
+    priority: -100
+    then:
+      - logger.log: "Turning off peripheral power..."
+      - switch.turn_off: soil_moisture_power
+      - switch.turn_off: soil_temperature_power
+      - switch.turn_off: blue_led
+
+      - binary_sensor.template.publish:
+          id: moisture_updated
+          state: OFF
+      - binary_sensor.template.publish:
+          id: temperature_updated
+          state: OFF
+
+wifi:
+  power_save_mode: none
+  networks:
+    - ssid: XXXXXX
+      password: XXXXX
+
+ota:
+  platform: esphome
+
+logger:
+  level: VERBOSE
+  
+deep_sleep: 
+  id: deep_sleep_1
+  run_duration: ${auto_wake_time}
+  sleep_duration: ${sleep_time}
+
+script:
+  - id: sleep_if_allowed
+    then:
+      # - if:
+      #     condition:
+      #         binary_sensor.is_on: stay_awake_sensor
+      #     then:
+      #       - logger.log: "Sleep requested but STAY AWAKE mode is on. Skipping sleep."
+      #       - deep_sleep.prevent: deep_sleep_1
+      #     else:
+      #       - logger.log: "Sleep requested and ALLOWED. Going to sleep..."
+      - deep_sleep.enter:
+          sleep_duration: ${sleep_time}
+
+binary_sensor:
+  - platform: template
+    id: moisture_updated
+    internal: true
+
+  - platform: template
+    id: temperature_updated
+    internal: true
+
+  - platform: template
+    id: all_updates_recieved
+    name: "All Updates Done"
+    icon: mdi:database-refresh-outline
+    internal: true
+    lambda: |-
+      return id(moisture_updated).state && id(temperature_updated).state;
+
+#  REQUIRES API
+
+  # - platform: homeassistant
+  #   name: "Stay Awake"
+  #   internal: false
+  #   id: "stay_awake_sensor"
+  #   entity_id: input_boolean.keep_esps_awake_switch_ha
+  #   icon: "mdi:sleep-off"
+  #   entity_category: diagnostic
+  #   on_press:
+  #     then:
+  #       - logger.log: "STAY AWAKE requested from HA. Preventing deep sleep"
+  #   on_release: 
+  #     then: 
+  #       - logger.log: "STAY AWAKE TURNED OFF. Going to sleep..."     
+
+switch:
+  - platform: gpio
+    id: soil_moisture_power
+    name: Soil Moisture Power     
+    pin: ${soil_moisture_power_pin}
+    internal: true
+    restore_mode: ALWAYS_ON
+
+  - platform: gpio
+    id: soil_temperature_power
+    name: Soil Temperature Power     
+    pin: ${soil_temperature_power_pin}
+    internal: true
+    restore_mode: ALWAYS_ON
+
+  - platform: gpio
+    id: blue_led 
+    name: LED   
+    pin: ${led_pin}
+    internal: true
+    restore_mode: ALWAYS_ON
+
+one_wire:
+  - platform: gpio
+    pin: ${soil_temperature_pin}
+
+sensor:
+  - platform: uptime
+    id: uptime_sec
+    name: Uptime Sensor 
+    update_interval: 2s
+    accuracy_decimals: 0
+    unit_of_measurement: s
+
+  - platform: adc
+    id: soil_moisture_sensor
+    pin: ${soil_moisture_pin}
+    name: soil_moisture_sensor
+    update_interval: 1s
+    samples: 10
+    attenuation: 12db
+    retain: true
+    on_value:
+      then:
+        - binary_sensor.template.publish:
+            id: moisture_updated
+            state: ON
+
+
+  - platform: dallas_temp
+    id: soil_temperature_sensor
+    name: "soil_temperature_sensor"
+    resolution: 12
+    update_interval: 1s
+    retain: true
+    on_value:
+      then:
+        - binary_sensor.template.publish:
+            id: temperature_updated
+            state: ON

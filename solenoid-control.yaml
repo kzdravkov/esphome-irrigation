@@ -1,0 +1,115 @@
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+esphome:
+  name: solenoid-driver
+  friendly_name: Solenoid Driver
+
+api:
+  reboot_timeout: 0s
+ota:
+  platform: esphome
+
+web_server:
+
+logger:
+  level: VERBOSE
+
+wifi:
+  power_save_mode: none
+  networks:
+    - ssid: XXXXX
+      password: XXXXX
+  on_connect:
+    then:
+      - output.turn_on: wifi_led
+  on_disconnect:
+    then:
+      - output.turn_off: wifi_led
+
+  # manual_ip:
+  #     static_ip: 172.19.51.220
+  #     gateway: 172.19.51.155
+  #     subnet: 255.255.255.0
+
+output:
+- platform: gpio
+  id: wifi_led
+  pin: GPIO2
+
+button:
+  - platform: template
+    name: "Solenoid A ON"
+    on_press:
+      then:
+        - script.execute: solenoid_a_on
+
+  - platform: template
+    name: "Solenoid A OFF"
+    on_press:
+      then:
+        - script.execute: solenoid_a_off
+
+  - platform: template
+    name: "Solenoid B ON"
+    on_press:
+      then:
+        - script.execute: solenoid_b_on
+
+  - platform: template
+    name: "Solenoid B OFF"
+    on_press:
+      then:
+        - script.execute: solenoid_b_off
+
+switch:
+  - platform: gpio
+    pin: GPIO32
+    id: solenoid_a_in1
+    restore_mode: ALWAYS_OFF
+
+  - platform: gpio
+    pin: GPIO33
+    id: solenoid_a_in2
+    restore_mode: ALWAYS_OFF
+
+  - platform: gpio
+    pin: GPIO25
+    id: solenoid_b_in1
+    restore_mode: ALWAYS_OFF
+
+  - platform: gpio
+    pin: GPIO26
+    id: solenoid_b_in2
+    restore_mode: ALWAYS_OFF
+
+script:
+  - id: solenoid_a_on
+    then:
+      - switch.turn_on: solenoid_a_in1
+      - switch.turn_off: solenoid_a_in2
+      - delay: 100ms
+      - switch.turn_off: solenoid_a_in1
+
+  - id: solenoid_a_off
+    then:
+      - switch.turn_off: solenoid_a_in1
+      - switch.turn_on: solenoid_a_in2
+      - delay: 100ms
+      - switch.turn_off: solenoid_a_in2
+
+  - id: solenoid_b_on
+    then:
+      - switch.turn_on: solenoid_b_in1
+      - switch.turn_off: solenoid_b_in2
+      - delay: 100ms
+      - switch.turn_off: solenoid_b_in1
+
+  - id: solenoid_b_off
+    then:
+      - switch.turn_off: solenoid_b_in1
+      - switch.turn_on: solenoid_b_in2
+      - delay: 100ms
+      - switch.turn_off: solenoid_b_in2
